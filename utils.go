@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/big"
 	"net"
 	"net/netip"
 	"regexp"
@@ -27,6 +26,8 @@ type Host struct {
 	Origin string
 	Type   HostType
 }
+
+var domainRegex = regexp.MustCompile(`(?m)^[A-Za-z0-9\-.]+$`)
 
 func Iterate(reader io.Reader) <-chan Host {
 	scanner := bufio.NewScanner(reader)
@@ -51,7 +52,7 @@ func Iterate(reader io.Reader) <-chan Host {
 			if err == nil {
 				p, err := netip.ParsePrefix(line)
 				if err != nil {
-					slog.Warn("Invalid cidr", "cidr", line, "err", err)
+					slog.Warn("无效的CIDR地址段", "cidr", line, "err", err)
 				}
 				if !p.Addr().Is4() && !enableIPv6 {
 					continue
@@ -82,17 +83,16 @@ func Iterate(reader io.Reader) <-chan Host {
 				}
 				continue
 			}
-			slog.Warn("Not a valid IP, IP CIDR or domain", "line", line)
+			slog.Warn("无效的IP, IP段或域名", "line", line)
 		}
 		if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
-			slog.Error("Read file error", "err", err)
+			slog.Error("读取文件时出错", "err", err)
 		}
 	}()
 	return hostChan
 }
 func ValidateDomainName(domain string) bool {
-	r := regexp.MustCompile(`(?m)^[A-Za-z0-9\-.]+$`)
-	return r.MatchString(domain)
+	return domainRegex.MatchString(domain)
 }
 func ExistOnlyOne(arr []string) bool {
 	exist := false
@@ -108,8 +108,7 @@ func ExistOnlyOne(arr []string) bool {
 	return exist
 }
 func IterateAddr(addr string) <-chan Host {
-	_, _, err := net.ParseCIDR(addr)
-	if err == nil {
+	if _, _, err := net.ParseCIDR(addr); err == nil {
 		return Iterate(strings.NewReader(addr))
 	}
 
@@ -120,27 +119,30 @@ func IterateAddr(addr string) <-chan Host {
 		var ipsToScan []net.IP
 		isDomain := false
 
-		ip := net.ParseIP(addr)
-		if ip != nil {
+		if ip := net.ParseIP(addr); ip != nil {
 			ipsToScan = append(ipsToScan, ip)
 		} else {
 			isDomain = true
 			allIPs, err := net.LookupIP(addr)
 			if err != nil {
-				slog.Error("Failed to lookup domain", "domain", addr, "err", err)
+				slog.Error("域名解析失败", "domain", addr, "err", err)
 				return
 			}
-
 			for _, lookupIP := range allIPs {
 				if ipv4 := lookupIP.To4(); ipv4 != nil {
 					ipsToScan = append(ipsToScan, ipv4)
 				}
 			}
+		}
 
-			if len(ipsToScan) == 0 {
-				slog.Error("No IPv4 addresses found for domain", "domain", addr)
-				return
-			}
+		if len(ipsToScan) == 0 {
+			slog.Error("未找到与目标关联的有效IPv4地址", "target", addr)
+			return
+		}
+
+		hostType := HostTypeIP
+		if isDomain {
+			hostType = HostTypeDomain
 		}
 
 		for _, baseIP := range ipsToScan {
@@ -149,17 +151,11 @@ func IterateAddr(addr string) <-chan Host {
 				continue
 			}
 
-			slog.Info("Starting /24 subnet scan", "baseIP", ipv4.String())
+			slog.Info("开始扫描 /24 子网", "baseIP", ipv4.String())
 			subnetBase := net.IPv4(ipv4[0], ipv4[1], ipv4[2], 0)
 
 			for i := 0; i < 256; i++ {
 				targetIP := net.IPv4(subnetBase[0], subnetBase[1], subnetBase[2], byte(i))
-
-				var hostType HostType = HostTypeIP
-				if isDomain {
-					hostType = HostTypeDomain
-				}
-
 				hostChan <- Host{
 					IP:     targetIP,
 					Origin: addr,
@@ -174,7 +170,7 @@ func IterateAddr(addr string) <-chan Host {
 func LookupIP(addr string) (net.IP, error) {
 	ips, err := net.LookupIP(addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to lookup: %w", err)
+		return nil, fmt.Errorf("域名解析失败: %w", err)
 	}
 	var arr []net.IP
 	for _, ip := range ips {
@@ -183,7 +179,7 @@ func LookupIP(addr string) (net.IP, error) {
 		}
 	}
 	if len(arr) == 0 {
-		return nil, errors.New("no IP found")
+		return nil, errors.New("未找到IP地址")
 	}
 	return arr[0], nil
 }
@@ -206,15 +202,4 @@ func OutWriter(writer io.Writer) chan<- string {
 		}
 	}()
 	return ch
-}
-func NextIP(ip net.IP, increment bool) net.IP {
-	ipb := big.NewInt(0).SetBytes(ip)
-	if increment {
-		ipb.Add(ipb, big.NewInt(1))
-	} else {
-		ipb.Sub(ipb, big.NewInt(1))
-	}
-	b := ipb.Bytes()
-	b = append(make([]byte, len(ip)-len(b)), b...)
-	return b
 }
