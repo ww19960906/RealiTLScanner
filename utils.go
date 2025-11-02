@@ -140,9 +140,11 @@ func IterateAddr(addr string) <-chan Host {
 			return
 		}
 
-		hostType := HostTypeIP
+		var hostType HostType
 		if isDomain {
 			hostType = HostTypeDomain
+		} else {
+			hostType = HostTypeIP
 		}
 
 		for _, baseIP := range ipsToScan {
