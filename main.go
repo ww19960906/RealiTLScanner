@@ -21,6 +21,7 @@ var timeout int
 var verbose bool
 var enableIPv6 bool
 var url string
+var rps int
 
 func main() {
 	_ = os.Unsetenv("ALL_PROXY")
@@ -38,6 +39,7 @@ func main() {
 	flag.BoolVar(&enableIPv6, "46", false, "Enable IPv6 in additional to IPv4")
 	flag.StringVar(&url, "url", "", "Crawl the domain list from a URL, "+
 		"e.g. https://launchpad.net/ubuntu/+archivemirrors")
+	flag.IntVar(&rps, "rps", 0, "Max requests per second (0 means unlimited)")
 	flag.Parse()
 	if verbose {
 		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
