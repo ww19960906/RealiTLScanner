@@ -108,36 +108,67 @@ func ExistOnlyOne(arr []string) bool {
 	return exist
 }
 func IterateAddr(addr string) <-chan Host {
-	hostChan := make(chan Host, 1)
 	_, _, err := net.ParseCIDR(addr)
 	if err == nil {
 		return Iterate(strings.NewReader(addr))
 	}
 
-	isDomain := false
-	ip := net.ParseIP(addr)
-	if ip == nil {
-		isDomain = true
-		ip, err = LookupIP(addr)
-		if err != nil {
-			close(hostChan)
-			slog.Error("Not a valid IP, IP CIDR or domain", "addr", addr)
-			return hostChan
-		}
-	}
-
+	hostChan := make(chan Host, 256)
 	go func() {
 		defer close(hostChan)
-		var hostType HostType = HostTypeIP
-		if isDomain {
-			hostType = HostTypeDomain
+
+		var ipsToScan []net.IP
+		isDomain := false
+
+		ip := net.ParseIP(addr)
+		if ip != nil {
+			ipsToScan = append(ipsToScan, ip)
+		} else {
+			isDomain = true
+			allIPs, err := net.LookupIP(addr)
+			if err != nil {
+				slog.Error("Failed to lookup domain", "domain", addr, "err", err)
+				return
+			}
+
+			for _, lookupIP := range allIPs {
+				if ipv4 := lookupIP.To4(); ipv4 != nil {
+					ipsToScan = append(ipsToScan, ipv4)
+				}
+			}
+
+			if len(ipsToScan) == 0 {
+				slog.Error("No IPv4 addresses found for domain", "domain", addr)
+				return
+			}
 		}
-		hostChan <- Host{
-			IP:     ip,
-			Origin: addr,
-			Type:   hostType,
+
+		for _, baseIP := range ipsToScan {
+			ipv4 := baseIP.To4()
+			if ipv4 == nil {
+				continue
+			}
+
+			slog.Info("Starting /24 subnet scan", "baseIP", ipv4.String())
+			subnetBase := net.IPv4(ipv4[0], ipv4[1], ipv4[2], 0)
+
+			for i := 0; i < 256; i++ {
+				targetIP := net.IPv4(subnetBase[0], subnetBase[1], subnetBase[2], byte(i))
+
+				var hostType HostType = HostTypeIP
+				if isDomain {
+					hostType = HostTypeDomain
+				}
+
+				hostChan <- Host{
+					IP:     targetIP,
+					Origin: addr,
+					Type:   hostType,
+				}
+			}
 		}
 	}()
+
 	return hostChan
 }
 func LookupIP(addr string) (net.IP, error) {
