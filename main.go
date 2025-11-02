@@ -28,18 +28,16 @@ func main() {
 	_ = os.Unsetenv("HTTP_PROXY")
 	_ = os.Unsetenv("HTTPS_PROXY")
 	_ = os.Unsetenv("NO_PROXY")
-	flag.StringVar(&addr, "addr", "", "Specify an IP, IP CIDR or domain to scan")
-	flag.StringVar(&in, "in", "", "Specify a file that contains multiple "+
-		"IPs, IP CIDRs or domains to scan, divided by line break")
-	flag.IntVar(&port, "port", 443, "Specify a HTTPS port to check")
-	flag.IntVar(&thread, "thread", 2, "Count of concurrent tasks")
-	flag.StringVar(&out, "out", "out.csv", "Output file to store the result")
-	flag.DurationVar(&timeout, "timeout", 2*time.Second, "Timeout for every check (e.g., 5s, 2000ms)")
-	flag.BoolVar(&verbose, "v", false, "Verbose output")
-	flag.BoolVar(&enableIPv6, "46", false, "Enable IPv6 in additional to IPv4")
-	flag.StringVar(&url, "url", "", "Crawl the domain list from a URL, "+
-		"e.g. https://launchpad.net/ubuntu/+archivemirrors")
-	flag.IntVar(&rps, "rps", 50, "Max requests per second (0 means unlimited)")
+	flag.StringVar(&addr, "addr", "", "指定要扫描的 IP, IP段 或 域名")
+	flag.StringVar(&in, "in", "", "指定包含多个扫描目标的文件, 每行一个")
+	flag.IntVar(&port, "port", 443, "指定要检查的 HTTPS 端口 (默认 443)")
+	flag.IntVar(&thread, "thread", 2, "并发扫描任务数 (默认 2)")
+	flag.StringVar(&out, "out", "out.csv", "用于存储结果的输出文件 (默认 out.csv)")
+	flag.DurationVar(&timeout, "timeout", 2*time.Second, "每次检查的超时时间 (例如: 5s, 2000ms)")
+	flag.BoolVar(&verbose, "v", false, "启用详细输出模式")
+	flag.BoolVar(&enableIPv6, "46", false, "同时启用 IPv6 扫描")
+	flag.StringVar(&url, "url", "", "从一个URL中抓取域名列表进行扫描")
+	flag.IntVar(&rps, "rps", 50, "每秒最大请求数 (默认 50, 0 代表无限制)")
 	flag.Parse()
 	if verbose {
 		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -51,7 +49,7 @@ func main() {
 		})))
 	}
 	if !ExistOnlyOne([]string{addr, in, url}) {
-		slog.Error("You must specify and only specify one of `addr`, `in`, or `url`")
+		slog.Error("参数 'addr', 'in', 'url' 只能指定其中一个")
 		flag.PrintDefaults()
 		return
 	}
@@ -59,7 +57,7 @@ func main() {
 	if out != "" {
 		f, err := os.OpenFile(out, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
-			slog.Error("Error opening file", "path", out)
+			slog.Error("打开输出文件时出错", "path", out)
 			return
 		}
 		defer f.Close()
@@ -72,22 +70,22 @@ func main() {
 	} else if in != "" {
 		f, err := os.Open(in)
 		if err != nil {
-			slog.Error("Error reading file", "path", in)
+			slog.Error("读取输入文件时出错", "path", in)
 			return
 		}
 		defer f.Close()
 		hostChan = Iterate(f)
 	} else {
-		slog.Info("Fetching url...")
+		slog.Info("正在抓取URL...")
 		resp, err := http.Get(url)
 		if err != nil {
-			slog.Error("Error fetching url", "err", err)
+			slog.Error("抓取URL时出错", "err", err)
 			return
 		}
 		defer resp.Body.Close()
 		v, err := io.ReadAll(resp.Body)
 		if err != nil {
-			slog.Error("Error reading body", "err", err)
+			slog.Error("读取响应内容时出错", "err", err)
 			return
 		}
 		arr := regexp.MustCompile("(http|https)://(.*?)[/\"<>\\s]+").FindAllStringSubmatch(string(v), -1)
@@ -96,7 +94,7 @@ func main() {
 			domains = append(domains, m[2])
 		}
 		domains = RemoveDuplicateStr(domains)
-		slog.Info("Parsed domains", "count", len(domains))
+		slog.Info("已解析域名", "count", len(domains))
 		hostChan = Iterate(strings.NewReader(strings.Join(domains, "\n")))
 	}
 	outCh := OutWriter(outWriter)
@@ -113,7 +111,7 @@ func main() {
 		}()
 	}
 	t := time.Now()
-	slog.Info("Started all scanning threads", "time", t)
+	slog.Info("所有扫描线程已启动", "time", t)
 	wg.Wait()
-	slog.Info("Scanning completed", "time", time.Now(), "elapsed", time.Since(t).String())
+	slog.Info("扫描完成", "time", time.Now(), "elapsed", time.Since(t).String())
 }
