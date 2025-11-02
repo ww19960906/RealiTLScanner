@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"math/big"
 	"net"
 	"net/netip"
@@ -41,7 +40,6 @@ func Iterate(reader io.Reader) <-chan Host {
 			}
 			ip := net.ParseIP(line)
 			if ip != nil && (ip.To4() != nil || enableIPv6) {
-				// ip address
 				hostChan <- Host{
 					IP:     ip,
 					Origin: line,
@@ -51,7 +49,6 @@ func Iterate(reader io.Reader) <-chan Host {
 			}
 			_, _, err := net.ParseCIDR(line)
 			if err == nil {
-				// ip cidr
 				p, err := netip.ParsePrefix(line)
 				if err != nil {
 					slog.Warn("Invalid cidr", "cidr", line, "err", err)
@@ -78,7 +75,6 @@ func Iterate(reader io.Reader) <-chan Host {
 				continue
 			}
 			if ValidateDomainName(line) {
-				// domain
 				hostChan <- Host{
 					IP:     nil,
 					Origin: line,
@@ -112,14 +108,16 @@ func ExistOnlyOne(arr []string) bool {
 	return exist
 }
 func IterateAddr(addr string) <-chan Host {
-	hostChan := make(chan Host)
+	hostChan := make(chan Host, 1)
 	_, _, err := net.ParseCIDR(addr)
 	if err == nil {
-		// is CIDR
 		return Iterate(strings.NewReader(addr))
 	}
+
+	isDomain := false
 	ip := net.ParseIP(addr)
 	if ip == nil {
+		isDomain = true
 		ip, err = LookupIP(addr)
 		if err != nil {
 			close(hostChan)
@@ -127,31 +125,17 @@ func IterateAddr(addr string) <-chan Host {
 			return hostChan
 		}
 	}
+
 	go func() {
-		slog.Info("Enable infinite mode", "init", ip.String())
-		lowIP := ip
-		highIP := ip
+		defer close(hostChan)
+		hostType := HostTypeIP
+		if isDomain {
+			hostType = HostTypeDomain
+		}
 		hostChan <- Host{
 			IP:     ip,
 			Origin: addr,
-			Type:   HostTypeIP,
-		}
-		for i := 0; i < math.MaxInt; i++ {
-			if i%2 == 0 {
-				lowIP = NextIP(lowIP, false)
-				hostChan <- Host{
-					IP:     lowIP,
-					Origin: lowIP.String(),
-					Type:   HostTypeIP,
-				}
-			} else {
-				highIP = NextIP(highIP, true)
-				hostChan <- Host{
-					IP:     highIP,
-					Origin: highIP.String(),
-					Type:   HostTypeIP,
-				}
-			}
+			Type:   hostType,
 		}
 	}()
 	return hostChan
@@ -193,15 +177,12 @@ func OutWriter(writer io.Writer) chan<- string {
 	return ch
 }
 func NextIP(ip net.IP, increment bool) net.IP {
-	// Convert to big.Int and increment
 	ipb := big.NewInt(0).SetBytes(ip)
 	if increment {
 		ipb.Add(ipb, big.NewInt(1))
 	} else {
 		ipb.Sub(ipb, big.NewInt(1))
 	}
-
-	// Add leading zeros
 	b := ipb.Bytes()
 	b = append(make([]byte, len(ip)-len(b)), b...)
 	return b
