@@ -154,10 +154,12 @@ func IterateAddr(addr string) <-chan Host {
 			}
 
 			slog.Info("开始扫描 /24 子网", "baseIP", ipv4.String())
-			subnetBase := net.IPv4(ipv4[0], ipv4[1], ipv4[2], 0)
-
+			
 			for i := 0; i < 256; i++ {
-				targetIP := net.IPv4(subnetBase[0], subnetBase[1], subnetBase[2], byte(i))
+				targetIP := make(net.IP, len(ipv4))
+				copy(targetIP, ipv4)
+				targetIP[3] = byte(i)
+
 				hostChan <- Host{
 					IP:     targetIP,
 					Origin: addr,
