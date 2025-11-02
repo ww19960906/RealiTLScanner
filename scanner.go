@@ -19,19 +19,19 @@ func ScanTLS(host Host, out chan<- string, geo *Geo) {
 		host.IP = ip
 	}
 	hostPort := net.JoinHostPort(host.IP.String(), strconv.Itoa(port))
-	conn, err := net.DialTimeout("tcp", hostPort, time.Duration(timeout)*time.Second)
+	conn, err := net.DialTimeout("tcp", hostPort, timeout)
 	if err != nil {
 		slog.Debug("Cannot dial", "target", hostPort)
 		return
 	}
 	defer conn.Close()
-	err = conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	err = conn.SetDeadline(time.Now().Add(timeout))
 	if err != nil {
 		slog.Error("Error setting deadline", "err", err)
 		return
 	}
 	tlsCfg := &tls.Config{
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: false,
 		NextProtos:         []string{"h2", "http/1.1"},
 		CurvePreferences:   []tls.CurveID{tls.X25519},
 	}
@@ -41,7 +41,7 @@ func ScanTLS(host Host, out chan<- string, geo *Geo) {
 	c := tls.Client(conn, tlsCfg)
 	err = c.Handshake()
 	if err != nil {
-		slog.Debug("TLS handshake failed", "target", hostPort)
+		slog.Debug("TLS handshake failed", "target", hostPort, "err", err)
 		return
 	}
 	state := c.ConnectionState()
