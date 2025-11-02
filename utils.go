@@ -135,7 +135,7 @@ func IterateAddr(addr string) <-chan Host {
 		hostChan <- Host{
 			IP:     ip,
 			Origin: addr,
-			Type:   hostType,
+			Type: HostType(someIntegerVariable),
 		}
 	}()
 	return hostChan
