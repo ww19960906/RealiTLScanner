@@ -128,14 +128,14 @@ func IterateAddr(addr string) <-chan Host {
 
 	go func() {
 		defer close(hostChan)
-		hostType := HostTypeIP
+		var hostType HostType = HostTypeIP
 		if isDomain {
 			hostType = HostTypeDomain
 		}
 		hostChan <- Host{
 			IP:     ip,
 			Origin: addr,
-			Type: HostType(someIntegerVariable),
+			Type:   hostType,
 		}
 	}()
 	return hostChan
