@@ -31,7 +31,7 @@ type Host struct {
 
 func Iterate(reader io.Reader) <-chan Host {
 	scanner := bufio.NewScanner(reader)
-	hostChan := make(chan Host)
+	hostChan := make(chan Host, 100)
 	go func() {
 		defer close(hostChan)
 		for scanner.Scan() {
