@@ -13,7 +13,7 @@ func ScanTLS(host Host, out chan<- string, geo *Geo) {
 	if host.IP == nil {
 		ip, err := LookupIP(host.Origin)
 		if err != nil {
-			slog.Debug("Failed to get IP from the origin", "origin", host.Origin, "err", err)
+			slog.Debug("无法从域名获取IP地址", "origin", host.Origin, "err", err)
 			return
 		}
 		host.IP = ip
@@ -21,13 +21,13 @@ func ScanTLS(host Host, out chan<- string, geo *Geo) {
 	hostPort := net.JoinHostPort(host.IP.String(), strconv.Itoa(port))
 	conn, err := net.DialTimeout("tcp", hostPort, timeout)
 	if err != nil {
-		slog.Debug("Cannot dial", "target", hostPort)
+		slog.Debug("无法建立TCP连接", "target", hostPort)
 		return
 	}
 	defer conn.Close()
 	err = conn.SetDeadline(time.Now().Add(timeout))
 	if err != nil {
-		slog.Error("Error setting deadline", "err", err)
+		slog.Error("设置连接截止时间时出错", "err", err)
 		return
 	}
 	tlsCfg := &tls.Config{
@@ -41,7 +41,7 @@ func ScanTLS(host Host, out chan<- string, geo *Geo) {
 	c := tls.Client(conn, tlsCfg)
 	err = c.Handshake()
 	if err != nil {
-		slog.Debug("TLS handshake failed", "target", hostPort, "err", err)
+		slog.Debug("TLS 握手失败", "target", hostPort, "err", err)
 		return
 	}
 	state := c.ConnectionState()
@@ -52,14 +52,13 @@ func ScanTLS(host Host, out chan<- string, geo *Geo) {
 	feasible := true
 	geoCode := geo.GetGeo(host.IP)
 	if state.Version != tls.VersionTLS13 || alpn != "h2" || len(domain) == 0 || len(issuers) == 0 {
-		// not feasible
 		log = slog.Debug
 		feasible = false
 	} else {
 		out <- strings.Join([]string{host.IP.String(), host.Origin, domain, "\"" + issuers + "\"", geoCode}, ",") +
 			"\n"
 	}
-	log("Connected to target", "feasible", feasible, "ip", host.IP.String(),
+	log("已连接到目标", "feasible", feasible, "ip", host.IP.String(),
 		"origin", host.Origin,
 		"tls", tls.VersionName(state.Version), "alpn", alpn, "cert-domain", domain, "cert-issuer", issuers,
 		"geo", geoCode)
