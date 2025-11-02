@@ -17,7 +17,7 @@ var in string
 var port int
 var thread int
 var out string
-var timeout int
+var timeout time.Duration
 var verbose bool
 var enableIPv6 bool
 var url string
@@ -34,7 +34,7 @@ func main() {
 	flag.IntVar(&port, "port", 443, "Specify a HTTPS port to check")
 	flag.IntVar(&thread, "thread", 2, "Count of concurrent tasks")
 	flag.StringVar(&out, "out", "out.csv", "Output file to store the result")
-	flag.IntVar(&timeout, "timeout", 10, "Timeout for every check")
+	flag.DurationVar(&timeout, "timeout", 2*time.Second, "Timeout for every check (e.g., 5s, 2000ms)")
 	flag.BoolVar(&verbose, "v", false, "Verbose output")
 	flag.BoolVar(&enableIPv6, "46", false, "Enable IPv6 in additional to IPv4")
 	flag.StringVar(&url, "url", "", "Crawl the domain list from a URL, "+
